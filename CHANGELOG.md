@@ -6,6 +6,7 @@ Docs: https://docs.clawd.bot
 Status: unreleased.
 
 ### Changes
+- Docs: add Fly private/hardened deployment guide. (#2121) Thanks @dguido.
 - Gateway: warn on hook tokens via query params; document header auth preference. (#2200) Thanks @YuriNachos.
 - Doctor: warn on gateway exposure without auth. (#2016) Thanks @Alex-Alaniz.
 - Discord: add configurable privileged gateway intents for presences/members. (#2266) Thanks @kentaro.

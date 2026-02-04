@@ -35,9 +35,13 @@ const OPENAI_MODEL_APIS = new Set([
   "openai",
   "openai-completions",
   "openai-responses",
+  "openai-responses-instructions",
   "openai-codex-responses",
 ]);
-const OPENAI_PROVIDERS = new Set(["openai", "openai-codex"]);
+const OPENAI_PROVIDERS = new Set(["openai", "openai-codex", "openai-codex-apikey"]);
+const OPENAI_COMPAT_TURN_MERGE_EXCLUDED_PROVIDERS = new Set(["openrouter", "opencode"]);
+const OPENAI_COMPAT_TURN_MERGE_EXCLUDED_PROVIDERS = new Set(["openrouter", "opencode"]);
+const OPENAI_PROVIDERS = new Set(["openai", "openai-codex", "openai-codex-apikey"]);
 const OPENAI_COMPAT_TURN_MERGE_EXCLUDED_PROVIDERS = new Set(["openrouter", "opencode"]);
 
 function isOpenAiApi(modelApi?: string | null): boolean {

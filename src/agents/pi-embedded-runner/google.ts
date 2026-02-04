@@ -415,7 +415,9 @@ export async function sanitizeSessionHistory(params: {
     stripStaleAssistantUsageBeforeLatestCompaction(sanitizedToolResults);
 
   const isOpenAIResponsesApi =
-    params.modelApi === "openai-responses" || params.modelApi === "openai-codex-responses";
+    params.modelApi === "openai-responses" ||
+    params.modelApi === "openai-responses-instructions" ||
+    params.modelApi === "openai-codex-responses";
   const hasSnapshot = Boolean(params.provider || params.modelApi || params.modelId);
   const priorSnapshot = hasSnapshot ? readLastModelSnapshot(params.sessionManager) : null;
   const modelChanged = priorSnapshot

@@ -64,7 +64,9 @@ import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 function isOpenAIProvider(provider?: string) {
   const normalized = provider?.trim().toLowerCase();
-  return normalized === "openai" || normalized === "openai-codex";
+  return (
+    normalized === "openai" || normalized === "openai-codex" || normalized === "openai-codex-apikey"
+  );
 }
 
 function isApplyPatchAllowedForModel(params: {

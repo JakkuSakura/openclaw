@@ -21,6 +21,7 @@ import { normalizeEnv } from "./infra/env.js";
 import { formatUncaughtError } from "./infra/errors.js";
 import { isMainModule } from "./infra/is-main.js";
 import { ensureOpenClawCliOnPath } from "./infra/path-env.js";
+import "./providers/openai-responses-instructions.js";
 import {
   describePortOwner,
   ensurePortAvailable,

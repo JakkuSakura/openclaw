@@ -1,6 +1,7 @@
 export type ModelApi =
   | "openai-completions"
   | "openai-responses"
+  | "openai-responses-instructions"
   | "anthropic-messages"
   | "google-generative-ai"
   | "github-copilot"

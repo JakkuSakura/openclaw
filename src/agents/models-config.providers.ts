@@ -1,5 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
-import type { ModelDefinitionConfig } from "../config/types.models.js";
+import type { ModelApi, ModelDefinitionConfig } from "../config/types.models.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   DEFAULT_COPILOT_API_BASE_URL,
@@ -38,6 +38,7 @@ import {
   HUGGINGFACE_MODEL_CATALOG,
   buildHuggingfaceModelDefinition,
 } from "./huggingface-models.js";
+import { loadCodexConfig, resolveCodexModelApi } from "./codex-config.js";
 import { resolveAwsSdkEnvVarName, resolveEnvApiKey } from "./model-auth.js";
 import { OLLAMA_NATIVE_BASE_URL } from "./ollama-stream.js";
 import {
@@ -162,6 +163,17 @@ const OPENROUTER_DEFAULT_COST = {
   cacheWrite: 0,
 };
 
+const CODEX_DEFAULT_CONTEXT_WINDOW = 400000;
+const CODEX_DEFAULT_MAX_TOKENS = 128000;
+const CODEX_FALLBACK_CONTEXT_WINDOW = 128000;
+const CODEX_FALLBACK_MAX_TOKENS = 8192;
+const CODEX_DEFAULT_COST = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+};
+
 const VLLM_BASE_URL = "http://127.0.0.1:8000/v1";
 const VLLM_DEFAULT_CONTEXT_WINDOW = 128000;
 const VLLM_DEFAULT_MAX_TOKENS = 8192;
@@ -193,6 +205,39 @@ const NVIDIA_DEFAULT_COST = {
   cacheRead: 0,
   cacheWrite: 0,
 };
+
+const CODEX_CONTEXT_WINDOWS: Record<string, number> = {
+  "gpt-5.2-codex": CODEX_DEFAULT_CONTEXT_WINDOW,
+  "gpt-5.1-codex": CODEX_DEFAULT_CONTEXT_WINDOW,
+  "gpt-5.1-codex-mini": CODEX_DEFAULT_CONTEXT_WINDOW,
+  "gpt-5.1-codex-max": CODEX_DEFAULT_CONTEXT_WINDOW,
+};
+
+const CODEX_MAX_TOKENS: Record<string, number> = {
+  "gpt-5.2-codex": CODEX_DEFAULT_MAX_TOKENS,
+  "gpt-5.1-codex": CODEX_DEFAULT_MAX_TOKENS,
+  "gpt-5.1-codex-mini": CODEX_DEFAULT_MAX_TOKENS,
+  "gpt-5.1-codex-max": CODEX_DEFAULT_MAX_TOKENS,
+};
+
+function isCodexModel(modelId: string): boolean {
+  return modelId.toLowerCase().includes("codex");
+}
+
+function buildCodexModelDefinition(modelId: string, api: ModelApi): ModelDefinitionConfig {
+  const reasoning = isCodexModel(modelId);
+  return {
+    id: modelId,
+    name: modelId,
+    api,
+    reasoning,
+    input: ["text"],
+    cost: CODEX_DEFAULT_COST,
+    contextWindow: CODEX_CONTEXT_WINDOWS[modelId] ?? CODEX_FALLBACK_CONTEXT_WINDOW,
+    maxTokens: CODEX_MAX_TOKENS[modelId] ?? CODEX_FALLBACK_MAX_TOKENS,
+    compat: reasoning ? { supportsReasoningEffort: true } : undefined,
+  };
+}
 
 const log = createSubsystemLogger("agents/model-providers");
 
@@ -880,6 +925,19 @@ export async function resolveImplicitProviders(params: {
     resolveApiKeyFromProfiles({ provider: "xiaomi", store: authStore });
   if (xiaomiKey) {
     providers.xiaomi = { ...buildXiaomiProvider(), apiKey: xiaomiKey };
+  }
+
+  const codexConfig = loadCodexConfig();
+  if (codexConfig?.apiKey && codexConfig.baseUrl) {
+    const api = resolveCodexModelApi(codexConfig);
+    const headers = Object.keys(codexConfig.headers).length > 0 ? codexConfig.headers : undefined;
+    providers["openai-codex-apikey"] = {
+      baseUrl: codexConfig.baseUrl,
+      api,
+      apiKey: codexConfig.apiKey,
+      headers,
+      models: [buildCodexModelDefinition(codexConfig.model, api)],
+    };
   }
 
   const cloudflareProfiles = listProfilesForProvider(authStore, "cloudflare-ai-gateway");

@@ -77,6 +77,13 @@ OpenClaw ships with the pi‑ai catalog. These providers require **no**
 }
 ```
 
+### OpenAI Codex (API key)
+
+- Provider: `openai-codex-apikey`
+- Auth: Codex API key from `~/.codex/auth.json`
+- Example model: `openai-codex-apikey/gpt-5.2-codex`
+- Docs: [/providers/openai-codex-apikey](/providers/openai-codex-apikey)
+
 ### OpenCode Zen
 
 - Provider: `opencode`

@@ -16,6 +16,7 @@ import {
   resolveAuthProfileOrder,
   resolveAuthStorePathForDisplay,
 } from "./auth-profiles.js";
+import { loadCodexConfig } from "./codex-config.js";
 import { normalizeProviderId } from "./model-selection.js";
 
 export { ensureAuthProfileStore, resolveAuthProfileOrder } from "./auth-profiles.js";
@@ -246,6 +247,13 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     const source = applied.has(envVar) ? `shell env: ${envVar}` : `env: ${envVar}`;
     return { apiKey: value, source };
   };
+
+  if (normalized === "openai-codex-apikey") {
+    const codexConfig = loadCodexConfig();
+    if (codexConfig?.apiKey) {
+      return { apiKey: codexConfig.apiKey, source: `codex:${codexConfig.codexHome}` };
+    }
+  }
 
   if (normalized === "github-copilot") {
     return pick("COPILOT_GITHUB_TOKEN") ?? pick("GH_TOKEN") ?? pick("GITHUB_TOKEN");

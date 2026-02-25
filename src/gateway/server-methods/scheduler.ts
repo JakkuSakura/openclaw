@@ -1,11 +1,11 @@
-import type { GatewayRequestHandlers } from "./types.js";
-import { readSchedulerStatus } from "../infra/scheduler-status.js";
+import { readSchedulerStatus } from "../../infra/scheduler-status.js";
 import {
   ErrorCodes,
   errorShape,
   formatValidationErrors,
   validateSchedulerStatusParams,
 } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 export const schedulerHandlers: GatewayRequestHandlers = {
   "scheduler.status": async ({ params, respond }) => {

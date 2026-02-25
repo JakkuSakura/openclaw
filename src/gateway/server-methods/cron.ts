@@ -1,13 +1,23 @@
-import type { CronJobCreate, CronJobPatch } from "../../cron/types.js";
-import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
-import { resolveCrontabSchedule, syncCrontabForJobs } from "../../cron/crontab-sync.js";
+import { runCrontabJob, shouldRunJob } from "../../cron/crontab-exec.js";
+import { readCrontabRunHistory } from "../../cron/crontab-history.js";
+import {
+  applyCronJobPatch,
+  createCronJobFromInput,
+  readCrontabSnapshot,
+  removeJobFromList,
+  replaceJobInList,
+  resolveCrontabJobOrThrow,
+  resolveCrontabSchedule,
+  writeCrontabJobs,
+} from "../../cron/crontab-store.js";
 import { normalizeCronJobCreate, normalizeCronJobPatch } from "../../cron/normalize.js";
 import {
   readCronRunLogEntriesPage,
   readCronRunLogEntriesPageAll,
   resolveCronRunLogPath,
 } from "../../cron/run-log.js";
+import type { CronJobCreate, CronJobPatch } from "../../cron/types.js";
 import { validateScheduleTimestamp } from "../../cron/validate-timestamp.js";
 import {
   ErrorCodes,
@@ -22,15 +32,11 @@ import {
   validateCronUpdateParams,
   validateWakeParams,
 } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
-function shouldSyncCrontab() {
+function useCrontabSourceOfTruth() {
   const cfg = loadConfig();
   return cfg.cron?.enabled === false;
-}
-
-async function syncCrontabFromContext(context: GatewayRequestContext) {
-  const jobs = await context.cron.list({ includeDisabled: true });
-  await syncCrontabForJobs(jobs);
 }
 
 function validateCrontabScheduleOrThrow(schedule: CronJobCreate["schedule"]) {
@@ -42,6 +48,14 @@ function validateCrontabScheduleOrThrow(schedule: CronJobCreate["schedule"]) {
 
 export const cronHandlers: GatewayRequestHandlers = {
   wake: ({ params, respond, context }) => {
+    if (useCrontabSourceOfTruth()) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "wake is not supported in crontab cron mode"),
+      );
+      return;
+    }
     if (!validateWakeParams(params)) {
       respond(
         false,
@@ -72,6 +86,53 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+
+    if (useCrontabSourceOfTruth()) {
+      const p = params as {
+        includeDisabled?: boolean;
+        limit?: number;
+        offset?: number;
+        query?: string;
+        enabled?: "all" | "enabled" | "disabled";
+        sortBy?: "nextRunAtMs" | "updatedAtMs" | "name";
+        sortDir?: "asc" | "desc";
+      };
+      const snapshot = await readCrontabSnapshot();
+      const jobs = snapshot.jobs.filter((job) => {
+        if (p.enabled === "enabled") {
+          return job.enabled;
+        }
+        if (p.enabled === "disabled") {
+          return !job.enabled;
+        }
+        if (!p.includeDisabled && !job.enabled) {
+          return false;
+        }
+        if (p.query && !job.name.toLowerCase().includes(p.query.toLowerCase())) {
+          return false;
+        }
+        return true;
+      });
+      const sortBy = p.sortBy ?? "nextRunAtMs";
+      const sortDir = p.sortDir ?? "asc";
+      const compare = (a: number | string, b: number | string) => (a === b ? 0 : a > b ? 1 : -1);
+      jobs.sort((a, b) => {
+        const sign = sortDir === "desc" ? -1 : 1;
+        if (sortBy === "name") {
+          return sign * compare(a.name.toLowerCase(), b.name.toLowerCase());
+        }
+        if (sortBy === "updatedAtMs") {
+          return sign * compare(a.updatedAtMs ?? 0, b.updatedAtMs ?? 0);
+        }
+        return sign * compare(a.state?.nextRunAtMs ?? 0, b.state?.nextRunAtMs ?? 0);
+      });
+      const limit = p.limit ?? 50;
+      const offset = p.offset ?? 0;
+      const page = jobs.slice(offset, offset + limit);
+      respond(true, { jobs: page, meta: { total: jobs.length, limit, offset } }, undefined);
+      return;
+    }
+
     const p = params as {
       includeDisabled?: boolean;
       limit?: number;
@@ -104,6 +165,13 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+
+    if (useCrontabSourceOfTruth()) {
+      const snapshot = await readCrontabSnapshot();
+      respond(true, { enabled: snapshot.jobs.length > 0, jobs: snapshot.jobs.length }, undefined);
+      return;
+    }
+
     const status = await context.cron.status();
     respond(true, status, undefined);
   },
@@ -130,24 +198,22 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    if (shouldSyncCrontab()) {
+
+    if (useCrontabSourceOfTruth()) {
       try {
         validateCrontabScheduleOrThrow(jobCreate.schedule);
+        const snapshot = await readCrontabSnapshot();
+        const job = createCronJobFromInput(jobCreate);
+        const nextJobs = [...snapshot.jobs, job];
+        await writeCrontabJobs(nextJobs, snapshot.lines);
+        respond(true, job, undefined);
       } catch (err) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
-        return;
-      }
-    }
-    const job = await context.cron.add(jobCreate);
-    if (shouldSyncCrontab()) {
-      try {
-        await syncCrontabFromContext(context);
-      } catch (err) {
-        await context.cron.remove(job.id).catch(() => undefined);
         respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
-        return;
       }
+      return;
     }
+
+    const job = await context.cron.add(jobCreate);
     respond(true, job, undefined);
   },
   "cron.update": async ({ params, respond, context }) => {
@@ -192,7 +258,7 @@ export const cronHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      if (shouldSyncCrontab()) {
+      if (useCrontabSourceOfTruth()) {
         try {
           validateCrontabScheduleOrThrow(patch.schedule);
         } catch (err) {
@@ -201,33 +267,22 @@ export const cronHandlers: GatewayRequestHandlers = {
         }
       }
     }
-    const prevJob = context.cron.getJob(jobId);
-    const job = await context.cron.update(jobId, patch);
-    if (shouldSyncCrontab()) {
+
+    if (useCrontabSourceOfTruth()) {
       try {
-        await syncCrontabFromContext(context);
+        const snapshot = await readCrontabSnapshot();
+        const prevJob = resolveCrontabJobOrThrow(snapshot.jobs, jobId);
+        const nextJob = applyCronJobPatch(prevJob, patch);
+        const nextJobs = replaceJobInList(snapshot.jobs, nextJob);
+        await writeCrontabJobs(nextJobs, snapshot.lines);
+        respond(true, nextJob, undefined);
       } catch (err) {
-        if (prevJob) {
-          await context.cron
-            .update(jobId, {
-              agentId: prevJob.agentId,
-              sessionKey: prevJob.sessionKey,
-              name: prevJob.name,
-              description: prevJob.description,
-              enabled: prevJob.enabled,
-              deleteAfterRun: prevJob.deleteAfterRun,
-              schedule: prevJob.schedule,
-              sessionTarget: prevJob.sessionTarget,
-              wakeMode: prevJob.wakeMode,
-              payload: prevJob.payload,
-              delivery: prevJob.delivery,
-            })
-            .catch(() => undefined);
-        }
         respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
-        return;
       }
+      return;
     }
+
+    const job = await context.cron.update(jobId, patch);
     respond(true, job, undefined);
   },
   "cron.remove": async ({ params, respond, context }) => {
@@ -252,15 +307,20 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const result = await context.cron.remove(jobId);
-    if (shouldSyncCrontab()) {
+
+    if (useCrontabSourceOfTruth()) {
       try {
-        await syncCrontabFromContext(context);
+        const snapshot = await readCrontabSnapshot();
+        const nextJobs = removeJobFromList(snapshot.jobs, jobId);
+        await writeCrontabJobs(nextJobs, snapshot.lines);
+        respond(true, { ok: true, removed: true }, undefined);
       } catch (err) {
         respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
-        return;
       }
+      return;
     }
+
+    const result = await context.cron.remove(jobId);
     respond(true, result, undefined);
   },
   "cron.run": async ({ params, respond, context }) => {
@@ -285,15 +345,38 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const result = await context.cron.run(jobId, p.mode ?? "force");
-    if (shouldSyncCrontab()) {
+
+    if (useCrontabSourceOfTruth()) {
+      const mode = p.mode ?? "force";
       try {
-        await syncCrontabFromContext(context);
+        const snapshot = await readCrontabSnapshot();
+        const job = resolveCrontabJobOrThrow(snapshot.jobs, jobId);
+        if (!shouldRunJob(job, mode)) {
+          respond(true, { ok: true, ran: false, reason: "not-due" }, undefined);
+          return;
+        }
+        const result = await runCrontabJob({
+          cfg: loadConfig(),
+          deps: context.deps,
+          job,
+          mode,
+        });
+        if (!result.ok) {
+          respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, result.error));
+          return;
+        }
+        if (job.schedule.kind === "at" && job.deleteAfterRun === true && result.ran) {
+          const nextJobs = removeJobFromList(snapshot.jobs, jobId);
+          await writeCrontabJobs(nextJobs, snapshot.lines);
+        }
+        respond(true, result, undefined);
       } catch (err) {
         respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
-        return;
       }
+      return;
     }
+
+    const result = await context.cron.run(jobId, p.mode ?? "force");
     respond(true, result, undefined);
   },
   "cron.runs": async ({ params, respond, context }) => {
@@ -308,23 +391,46 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+
+    if (useCrontabSourceOfTruth()) {
+      const p = params as { id?: string; jobId?: string; limit?: number };
+      const jobId = p.id ?? p.jobId;
+      if (!jobId) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "invalid cron.runs params: missing id"),
+        );
+        return;
+      }
+      const limit = typeof p.limit === "number" && Number.isFinite(p.limit) ? p.limit : 50;
+      const entries = await readCrontabRunHistory({ jobId, limit });
+      respond(
+        true,
+        { entries, total: entries.length, hasMore: false, nextOffset: null },
+        undefined,
+      );
+      return;
+    }
+
     const p = params as {
-      scope?: "job" | "all";
       id?: string;
       jobId?: string;
       limit?: number;
       offset?: number;
-      statuses?: Array<"ok" | "error" | "skipped">;
-      status?: "all" | "ok" | "error" | "skipped";
-      deliveryStatuses?: Array<"delivered" | "not-delivered" | "unknown" | "not-requested">;
-      deliveryStatus?: "delivered" | "not-delivered" | "unknown" | "not-requested";
-      query?: string;
-      sortDir?: "asc" | "desc";
+      scope?: string;
     };
-    const explicitScope = p.scope;
     const jobId = p.id ?? p.jobId;
-    const scope: "job" | "all" = explicitScope ?? (jobId ? "job" : "all");
-    if (scope === "job" && !jobId) {
+    if (p.scope === "all") {
+      const page = await readCronRunLogEntriesPageAll({
+        storePath: context.cronStorePath,
+        offset: p.offset,
+        limit: p.limit,
+      });
+      respond(true, page, undefined);
+      return;
+    }
+    if (!jobId) {
       respond(
         false,
         undefined,
@@ -332,35 +438,9 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    if (scope === "all") {
-      const jobs = await context.cron.list({ includeDisabled: true });
-      const jobNameById = Object.fromEntries(
-        jobs
-          .filter((job) => typeof job.id === "string" && typeof job.name === "string")
-          .map((job) => [job.id, job.name]),
-      );
-      const page = await readCronRunLogEntriesPageAll({
-        storePath: context.cronStorePath,
-        limit: p.limit,
-        offset: p.offset,
-        statuses: p.statuses,
-        status: p.status,
-        deliveryStatuses: p.deliveryStatuses,
-        deliveryStatus: p.deliveryStatus,
-        query: p.query,
-        sortDir: p.sortDir,
-        jobNameById,
-      });
-      respond(true, page, undefined);
-      return;
-    }
-    let logPath: string;
-    try {
-      logPath = resolveCronRunLogPath({
-        storePath: context.cronStorePath,
-        jobId: jobId as string,
-      });
-    } catch {
+    const jobs = await context.cron.list({ includeDisabled: true });
+    const job = jobs.find((entry) => entry.id === jobId);
+    if (!job) {
       respond(
         false,
         undefined,
@@ -368,16 +448,13 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const page = await readCronRunLogEntriesPage(logPath, {
+    const page = await readCronRunLogEntriesPage({
+      storePath: context.cronStorePath,
+      logPath: resolveCronRunLogPath(context.cronStorePath, jobId),
+      jobId,
+      jobName: job.name,
       limit: p.limit,
       offset: p.offset,
-      jobId: jobId as string,
-      statuses: p.statuses,
-      status: p.status,
-      deliveryStatuses: p.deliveryStatuses,
-      deliveryStatus: p.deliveryStatus,
-      query: p.query,
-      sortDir: p.sortDir,
     });
     respond(true, page, undefined);
   },

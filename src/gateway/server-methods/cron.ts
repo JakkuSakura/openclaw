@@ -1,10 +1,13 @@
+import type { CronJobCreate, CronJobPatch } from "../../cron/types.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
+import { loadConfig } from "../../config/config.js";
+import { resolveCrontabSchedule, syncCrontabForJobs } from "../../cron/crontab-sync.js";
 import { normalizeCronJobCreate, normalizeCronJobPatch } from "../../cron/normalize.js";
 import {
   readCronRunLogEntriesPage,
   readCronRunLogEntriesPageAll,
   resolveCronRunLogPath,
 } from "../../cron/run-log.js";
-import type { CronJobCreate, CronJobPatch } from "../../cron/types.js";
 import { validateScheduleTimestamp } from "../../cron/validate-timestamp.js";
 import {
   ErrorCodes,
@@ -19,7 +22,23 @@ import {
   validateCronUpdateParams,
   validateWakeParams,
 } from "../protocol/index.js";
-import type { GatewayRequestHandlers } from "./types.js";
+
+function shouldSyncCrontab() {
+  const cfg = loadConfig();
+  return cfg.cron?.enabled === false;
+}
+
+async function syncCrontabFromContext(context: GatewayRequestContext) {
+  const jobs = await context.cron.list({ includeDisabled: true });
+  await syncCrontabForJobs(jobs);
+}
+
+function validateCrontabScheduleOrThrow(schedule: CronJobCreate["schedule"]) {
+  const result = resolveCrontabSchedule(schedule);
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+}
 
 export const cronHandlers: GatewayRequestHandlers = {
   wake: ({ params, respond, context }) => {
@@ -111,7 +130,24 @@ export const cronHandlers: GatewayRequestHandlers = {
       );
       return;
     }
+    if (shouldSyncCrontab()) {
+      try {
+        validateCrontabScheduleOrThrow(jobCreate.schedule);
+      } catch (err) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+        return;
+      }
+    }
     const job = await context.cron.add(jobCreate);
+    if (shouldSyncCrontab()) {
+      try {
+        await syncCrontabFromContext(context);
+      } catch (err) {
+        await context.cron.remove(job.id).catch(() => undefined);
+        respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
+        return;
+      }
+    }
     respond(true, job, undefined);
   },
   "cron.update": async ({ params, respond, context }) => {
@@ -156,8 +192,42 @@ export const cronHandlers: GatewayRequestHandlers = {
         );
         return;
       }
+      if (shouldSyncCrontab()) {
+        try {
+          validateCrontabScheduleOrThrow(patch.schedule);
+        } catch (err) {
+          respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+          return;
+        }
+      }
     }
+    const prevJob = context.cron.getJob(jobId);
     const job = await context.cron.update(jobId, patch);
+    if (shouldSyncCrontab()) {
+      try {
+        await syncCrontabFromContext(context);
+      } catch (err) {
+        if (prevJob) {
+          await context.cron
+            .update(jobId, {
+              agentId: prevJob.agentId,
+              sessionKey: prevJob.sessionKey,
+              name: prevJob.name,
+              description: prevJob.description,
+              enabled: prevJob.enabled,
+              deleteAfterRun: prevJob.deleteAfterRun,
+              schedule: prevJob.schedule,
+              sessionTarget: prevJob.sessionTarget,
+              wakeMode: prevJob.wakeMode,
+              payload: prevJob.payload,
+              delivery: prevJob.delivery,
+            })
+            .catch(() => undefined);
+        }
+        respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
+        return;
+      }
+    }
     respond(true, job, undefined);
   },
   "cron.remove": async ({ params, respond, context }) => {
@@ -183,6 +253,14 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     const result = await context.cron.remove(jobId);
+    if (shouldSyncCrontab()) {
+      try {
+        await syncCrontabFromContext(context);
+      } catch (err) {
+        respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
+        return;
+      }
+    }
     respond(true, result, undefined);
   },
   "cron.run": async ({ params, respond, context }) => {
@@ -208,6 +286,14 @@ export const cronHandlers: GatewayRequestHandlers = {
       return;
     }
     const result = await context.cron.run(jobId, p.mode ?? "force");
+    if (shouldSyncCrontab()) {
+      try {
+        await syncCrontabFromContext(context);
+      } catch (err) {
+        respond(false, undefined, errorShape(ErrorCodes.INTERNAL_ERROR, String(err)));
+        return;
+      }
+    }
     respond(true, result, undefined);
   },
   "cron.runs": async ({ params, respond, context }) => {

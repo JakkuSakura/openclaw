@@ -330,39 +330,42 @@ function renderFieldLabel(text: string, required = false) {
 }
 
 export function renderCron(props: CronProps) {
-  if (props.schedulerStatus || props.schedulerError) {
-    return html`
-      <section class="card">
-        <div class="card-title">Cron Jobs</div>
-        <div class="card-sub">External scheduler (crontab + systemd)</div>
-        <div class="muted" style="margin-top: 6px;">Gateway internal cron is disabled.</div>
-        ${
-          props.schedulerError
-            ? html`<div class="callout danger" style="margin-top: 12px;">${props.schedulerError}</div>`
-            : nothing
-        }
-        ${
-          props.schedulerStatus?.errors?.length
-            ? html`<div class="callout danger" style="margin-top: 12px;">${props.schedulerStatus.errors.join("\n")}</div>`
-            : nothing
-        }
-        <div class="note-grid" style="margin-top: 12px;">
-          <div>
-            <div class="note-title">Crontab</div>
-            <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.crontab || "(empty)"}</pre>
-          </div>
-          <div>
-            <div class="note-title">Systemd timers</div>
-            <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.systemdTimers || "(unavailable)"}</pre>
-          </div>
-          <div>
-            <div class="note-title">Systemd services</div>
-            <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.systemdServices || "(unavailable)"}</pre>
-          </div>
-        </div>
-      </section>
-    `;
-  }
+  const schedulerPanel =
+    props.schedulerStatus || props.schedulerError
+      ? html`
+          <section class="card">
+            <div class="card-title">Cron Jobs</div>
+            <div class="card-sub">External scheduler (crontab + systemd)</div>
+            <div class="muted" style="margin-top: 6px;">
+              Cron jobs are synced to your user crontab when gateway cron is disabled.
+            </div>
+            ${
+              props.schedulerError
+                ? html`<div class="callout danger" style="margin-top: 12px;">${props.schedulerError}</div>`
+                : nothing
+            }
+            ${
+              props.schedulerStatus?.errors?.length
+                ? html`<div class="callout danger" style="margin-top: 12px;">${props.schedulerStatus.errors.join("\n")}</div>`
+                : nothing
+            }
+            <div class="note-grid" style="margin-top: 12px;">
+              <div>
+                <div class="note-title">Crontab</div>
+                <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.crontab || "(empty)"}</pre>
+              </div>
+              <div>
+                <div class="note-title">Systemd timers</div>
+                <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.systemdTimers || "(unavailable)"}</pre>
+              </div>
+              <div>
+                <div class="note-title">Systemd services</div>
+                <pre class="mono" style="white-space: pre-wrap;">${props.schedulerStatus?.systemdServices || "(unavailable)"}</pre>
+              </div>
+            </div>
+          </section>
+        `
+      : nothing;
 
   const isEditing = Boolean(props.editingJobId);
   const isAgentTurn = props.form.payloadKind === "agentTurn";
@@ -394,6 +397,7 @@ export function renderCron(props: CronProps) {
       ? `Fix ${blockingFields.length} ${blockingFields.length === 1 ? "field" : "fields"} to continue.`
       : "";
   return html`
+    ${schedulerPanel}
     <section class="card cron-summary-strip">
       <div class="cron-summary-strip__left">
         <div class="cron-summary-item">

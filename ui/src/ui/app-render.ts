@@ -1,10 +1,10 @@
 import { html, nothing } from "lit";
+import type { AppViewState } from "./app-view-state.ts";
 import { parseAgentSessionKey } from "../../../src/routing/session-key.js";
 import { t } from "../i18n/index.ts";
 import { refreshChatAvatar } from "./app-chat.ts";
 import { renderUsageTab } from "./app-render-usage-tab.ts";
 import { renderChatControls, renderTab, renderThemeToggle } from "./app-render.helpers.ts";
-import type { AppViewState } from "./app-view-state.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -149,7 +149,15 @@ export function renderApp(state: AppViewState) {
   const versionStatusClass = availableUpdate ? "warn" : "ok";
   const presenceCount = state.presenceEntries.length;
   const sessionsCount = state.sessionsResult?.count ?? null;
-  const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
+  const schedulerStatus = state.schedulerStatus;
+  const cronEnabled = schedulerStatus
+    ? Boolean(
+        (schedulerStatus.crontab ?? "").trim() ||
+        (schedulerStatus.systemdTimers ?? "").trim() ||
+        (schedulerStatus.systemdServices ?? "").trim(),
+      )
+    : (state.cronStatus?.enabled ?? null);
+  const cronNext = null;
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
   const isChat = state.tab === "chat";
   const chatFocus = isChat && (state.settings.chatFocusMode || state.onboarding);
@@ -336,7 +344,7 @@ export function renderApp(state: AppViewState) {
                 lastErrorCode: state.lastErrorCode,
                 presenceCount,
                 sessionsCount,
-                cronEnabled: state.cronStatus?.enabled ?? null,
+                cronEnabled,
                 cronNext,
                 lastChannelsRefresh: state.channelsLastSuccess,
                 onSettingsChange: (next) => state.applySettings(next),
@@ -442,6 +450,8 @@ export function renderApp(state: AppViewState) {
                 loading: state.cronLoading,
                 jobsLoadingMore: state.cronJobsLoadingMore,
                 status: state.cronStatus,
+                schedulerStatus: state.schedulerStatus,
+                schedulerError: state.schedulerError,
                 jobs: state.cronJobs,
                 jobsTotal: state.cronJobsTotal,
                 jobsHasMore: state.cronJobsHasMore,

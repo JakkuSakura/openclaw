@@ -523,6 +523,13 @@ export type CronStatus = {
   nextWakeAtMs?: number | null;
 };
 
+export type SchedulerStatus = {
+  crontab?: string;
+  systemdTimers?: string;
+  systemdServices?: string;
+  errors?: string[];
+};
+
 export type CronJobsEnabledFilter = "all" | "enabled" | "disabled";
 export type CronJobsSortBy = "nextRunAtMs" | "updatedAtMs" | "name";
 export type CronSortDir = "asc" | "desc";

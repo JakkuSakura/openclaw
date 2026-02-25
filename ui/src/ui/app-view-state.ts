@@ -211,6 +211,8 @@ export type AppViewState = {
   cronJobsSortDir: CronSortDir;
   cronStatus: CronStatus | null;
   cronError: string | null;
+  schedulerStatus: import("./types.js").SchedulerStatus | null;
+  schedulerError: string | null;
   cronForm: CronFormState;
   cronFieldErrors: CronFieldErrors;
   cronEditingJobId: string | null;

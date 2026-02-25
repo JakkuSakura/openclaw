@@ -117,6 +117,7 @@ import type {
   NodeRenameParamsSchema,
 } from "./nodes.js";
 import type { PushTestParamsSchema, PushTestResultSchema } from "./push.js";
+import type { SchedulerStatusParamsSchema, SchedulerStatusResultSchema } from "./scheduler.js";
 import type {
   SessionsCompactParamsSchema,
   SessionsDeleteParamsSchema,
@@ -236,6 +237,8 @@ export type CronRemoveParams = Static<typeof CronRemoveParamsSchema>;
 export type CronRunParams = Static<typeof CronRunParamsSchema>;
 export type CronRunsParams = Static<typeof CronRunsParamsSchema>;
 export type CronRunLogEntry = Static<typeof CronRunLogEntrySchema>;
+export type SchedulerStatusParams = Static<typeof SchedulerStatusParamsSchema>;
+export type SchedulerStatusResult = Static<typeof SchedulerStatusResultSchema>;
 export type LogsTailParams = Static<typeof LogsTailParamsSchema>;
 export type LogsTailResult = Static<typeof LogsTailResultSchema>;
 export type ExecApprovalsGetParams = Static<typeof ExecApprovalsGetParamsSchema>;

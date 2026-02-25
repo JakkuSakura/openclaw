@@ -91,6 +91,9 @@ import {
   CronStatusParamsSchema,
   type CronUpdateParams,
   CronUpdateParamsSchema,
+  type SchedulerStatusParams,
+  SchedulerStatusParamsSchema,
+  type SchedulerStatusResult,
   type DevicePairApproveParams,
   DevicePairApproveParamsSchema,
   type DevicePairListParams,
@@ -334,6 +337,9 @@ export const validateCronUpdateParams = ajv.compile<CronUpdateParams>(CronUpdate
 export const validateCronRemoveParams = ajv.compile<CronRemoveParams>(CronRemoveParamsSchema);
 export const validateCronRunParams = ajv.compile<CronRunParams>(CronRunParamsSchema);
 export const validateCronRunsParams = ajv.compile<CronRunsParams>(CronRunsParamsSchema);
+export const validateSchedulerStatusParams = ajv.compile<SchedulerStatusParams>(
+  SchedulerStatusParamsSchema,
+);
 export const validateDevicePairListParams = ajv.compile<DevicePairListParams>(
   DevicePairListParamsSchema,
 );
@@ -610,6 +616,8 @@ export type {
   CronRunParams,
   CronRunsParams,
   CronRunLogEntry,
+  SchedulerStatusParams,
+  SchedulerStatusResult,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,
   ExecApprovalsSnapshot,

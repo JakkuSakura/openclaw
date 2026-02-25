@@ -1,3 +1,5 @@
+import type { OpenClawApp } from "./app.ts";
+import type { AgentsListResult } from "./types.ts";
 import { refreshChat } from "./app-chat.ts";
 import {
   startLogsPolling,
@@ -6,7 +8,6 @@ import {
   stopDebugPolling,
 } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
-import type { OpenClawApp } from "./app.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents, loadToolsCatalog } from "./controllers/agents.ts";
@@ -24,6 +25,7 @@ import { loadExecApprovals } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { loadPresence } from "./controllers/presence.ts";
+import { loadSchedulerStatus } from "./controllers/scheduler.ts";
 import { loadSessions } from "./controllers/sessions.ts";
 import { loadSkills } from "./controllers/skills.ts";
 import {
@@ -37,7 +39,6 @@ import {
 import { saveSettings, type UiSettings } from "./storage.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode } from "./theme.ts";
-import type { AgentsListResult } from "./types.ts";
 
 type SettingsHost = {
   settings: UiSettings;
@@ -413,6 +414,7 @@ export async function loadOverview(host: SettingsHost) {
     loadChannels(host as unknown as OpenClawApp, false),
     loadPresence(host as unknown as OpenClawApp),
     loadSessions(host as unknown as OpenClawApp),
+    loadSchedulerStatus(host as unknown as OpenClawApp),
     loadCronStatus(host as unknown as OpenClawApp),
     loadDebug(host as unknown as OpenClawApp),
   ]);
@@ -430,6 +432,7 @@ export async function loadCron(host: SettingsHost) {
   const cronHost = host as unknown as OpenClawApp;
   await Promise.all([
     loadChannels(host as unknown as OpenClawApp, false),
+    loadSchedulerStatus(cronHost),
     loadCronStatus(cronHost),
     loadCronJobs(cronHost),
     loadCronModelSuggestions(cronHost),

@@ -83,6 +83,7 @@ const BASE_METHODS = [
   "cron.remove",
   "cron.run",
   "cron.runs",
+  "scheduler.status",
   "system-presence",
   "system-event",
   "send",

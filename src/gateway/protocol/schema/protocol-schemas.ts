@@ -124,6 +124,7 @@ import {
   NodeRenameParamsSchema,
 } from "./nodes.js";
 import { PushTestParamsSchema, PushTestResultSchema } from "./push.js";
+import { SchedulerStatusParamsSchema, SchedulerStatusResultSchema } from "./scheduler.js";
 import {
   SessionsCompactParamsSchema,
   SessionsDeleteParamsSchema,
@@ -247,6 +248,8 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   CronRunParams: CronRunParamsSchema,
   CronRunsParams: CronRunsParamsSchema,
   CronRunLogEntry: CronRunLogEntrySchema,
+  SchedulerStatusParams: SchedulerStatusParamsSchema,
+  SchedulerStatusResult: SchedulerStatusResultSchema,
   LogsTailParams: LogsTailParamsSchema,
   LogsTailResult: LogsTailResultSchema,
   ExecApprovalsGetParams: ExecApprovalsGetParamsSchema,

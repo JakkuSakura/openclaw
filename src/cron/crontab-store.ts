@@ -5,7 +5,7 @@ import type { CronJob, CronJobCreate, CronJobPatch, CronSchedule } from "./types
 
 const TAG = "openclaw:cron";
 const TAG_PREFIX = `# ${TAG}`;
-const CRON_COMMAND = "openclaw cron run";
+const CRON_COMMAND_MARKER = /\bopenclaw\b\s+cron\s+run\b/i;
 
 const ONE_MINUTE_MS = 60 * 1000;
 const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
@@ -151,7 +151,7 @@ function parseScheduleLine(rawLine: string) {
   if (!line.includes(TAG)) {
     return null;
   }
-  if (!line.includes(CRON_COMMAND)) {
+  if (!CRON_COMMAND_MARKER.test(line)) {
     return null;
   }
   const parts = line.split(/\s+/).filter(Boolean);
@@ -294,10 +294,11 @@ export async function readCrontabSnapshot(): Promise<CrontabSnapshot> {
 }
 
 export async function writeCrontabJobs(jobs: CronJob[], existingLines: string[]) {
+  const command = await resolveOpenClawCommand();
   const filtered = existingLines.filter(
     (line) => !line.includes(TAG_PREFIX) && !line.includes(TAG),
   );
-  const entries = jobs.flatMap((job) => buildTaggedEntryLines(job));
+  const entries = jobs.flatMap((job) => buildTaggedEntryLines(job, command));
   const nextLines = [...filtered, ...(filtered.length ? [""] : []), ...entries, ""];
   const content = nextLines.join("\n").replace(/\n{3,}/g, "\n\n");
 
@@ -418,7 +419,7 @@ export function resolveCrontabSchedule(schedule: CronSchedule) {
   return { ok: false, error: "unsupported schedule kind" } as const;
 }
 
-function buildTaggedEntryLines(job: CronJob) {
+function buildTaggedEntryLines(job: CronJob, command: string) {
   const lines: string[] = [];
   const base: Record<string, string> = {
     id: job.id,
@@ -534,13 +535,26 @@ function buildTaggedEntryLines(job: CronJob) {
   if (job.schedule.kind === "cron" && job.schedule.tz) {
     lines.push(`CRON_TZ=${job.schedule.tz}`);
   }
-  const scheduleLine = `${cronExpr} ${CRON_COMMAND} ${job.id} ${TAG_PREFIX} id=${encodeValue(job.id)}`;
+  const scheduleLine = `${cronExpr} ${command} cron run ${job.id} ${TAG_PREFIX} id=${encodeValue(job.id)}`;
   lines.push(job.enabled ? scheduleLine : `# ${scheduleLine}`);
   if (job.schedule.kind === "cron" && job.schedule.tz) {
     lines.push("CRON_TZ=");
   }
 
   return lines;
+}
+
+async function resolveOpenClawCommand() {
+  const override =
+    typeof process.env.OPENCLAW_CRON_CMD === "string" ? process.env.OPENCLAW_CRON_CMD.trim() : "";
+  if (override) {
+    return override;
+  }
+  const res = await runCommand("command", ["-v", "openclaw"]);
+  if (res.ok && res.stdout.trim()) {
+    return res.stdout.trim().split("\n")[0].trim();
+  }
+  return "openclaw";
 }
 
 function buildTaggedLine(values: Record<string, string>) {
